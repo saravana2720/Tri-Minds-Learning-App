@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+
 import {
   Sparkles,
   BookOpen,
@@ -9,163 +10,410 @@ import {
   Circle,
 } from "lucide-react";
 
+// ============================================================
+// API CONFIGURATION
+// ============================================================
+
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  "http://127.0.0.1:8000";
+
 function LearningPlan() {
-  const [topic, setTopic] = useState("Machine Learning Engineer");
-  const [level, setLevel] = useState("beginner");
-  const [duration, setDuration] = useState("4");
+  // ==========================================================
+  // FORM STATE
+  // ==========================================================
+
+  const [topic, setTopic] = useState(
+    "Machine Learning Engineer"
+  );
+
+  const [level, setLevel] = useState(
+    "beginner"
+  );
+
+  const [duration, setDuration] = useState(
+    "4"
+  );
+
+  // ==========================================================
+  // PLAN STATE
+  // ==========================================================
 
   const [plan, setPlan] = useState(null);
-  const [loading, setLoading] = useState(false);
+
+  const [loading, setLoading] = useState(
+    false
+  );
+
   const [error, setError] = useState("");
 
-  // ==========================================
+  // ==========================================================
   // COMPLETED WEEKS
-  // ==========================================
+  // ==========================================================
 
-  const [completedWeeks, setCompletedWeeks] = useState(() => {
-    try {
-      const savedWeeks = localStorage.getItem(
-        "completedLearningWeeks"
-      );
+  const [completedWeeks, setCompletedWeeks] =
+    useState(() => {
+      try {
+        const savedWeeks =
+          localStorage.getItem(
+            "completedLearningWeeks"
+          );
 
-      return savedWeeks ? JSON.parse(savedWeeks) : [];
-    } catch {
-      return [];
-    }
-  });
+        if (!savedWeeks) {
+          return [];
+        }
 
-  // ==========================================
-  // SAVE COMPLETED WEEKS TO LOCAL STORAGE
-  // ==========================================
+        const parsedWeeks =
+          JSON.parse(savedWeeks);
+
+        return Array.isArray(parsedWeeks)
+          ? parsedWeeks
+          : [];
+      } catch (storageError) {
+        console.error(
+          "Unable to load learning progress:",
+          storageError
+        );
+
+        return [];
+      }
+    });
+
+  // ==========================================================
+  // SAVE COMPLETED WEEKS
+  // ==========================================================
 
   useEffect(() => {
-    localStorage.setItem(
-      "completedLearningWeeks",
-      JSON.stringify(completedWeeks)
-    );
+    try {
+      localStorage.setItem(
+        "completedLearningWeeks",
+        JSON.stringify(completedWeeks)
+      );
+    } catch (storageError) {
+      console.error(
+        "Unable to save learning progress:",
+        storageError
+      );
+    }
   }, [completedWeeks]);
 
-  // ==========================================
+  // ==========================================================
   // GENERATE LEARNING PLAN
-  // ==========================================
+  // ==========================================================
 
   const generatePlan = async () => {
+    // --------------------------------------------------------
+    // RESET ERROR
+    // --------------------------------------------------------
+
     setError("");
 
-    if (!topic.trim()) {
-      setError("Please enter a learning topic.");
+    // --------------------------------------------------------
+    // VALIDATE TOPIC
+    // --------------------------------------------------------
+
+    const cleanTopic = topic.trim();
+
+    if (!cleanTopic) {
+      setError(
+        "Please enter a learning topic."
+      );
+
       return;
     }
+
+    // --------------------------------------------------------
+    // VALIDATE DURATION
+    // --------------------------------------------------------
 
     const weeks = Number(duration);
 
-    if (weeks < 1 || weeks > 12) {
+    if (
+      !Number.isInteger(weeks) ||
+      weeks < 1 ||
+      weeks > 12
+    ) {
       setError(
         "Duration must be between 1 and 12 weeks."
       );
+
       return;
     }
 
+    // --------------------------------------------------------
+    // START LOADING
+    // --------------------------------------------------------
+
     setLoading(true);
+
+    // Clear previous plan while generating
     setPlan(null);
 
     try {
+      console.log(
+        "================================="
+      );
+
+      console.log(
+        "LEARNING PLAN REQUEST"
+      );
+
+      console.log(
+        "================================="
+      );
+
+      console.log(
+        "API:",
+        `${API_URL}/api/v1/learning-plan`
+      );
+
+      console.log(
+        "Topic:",
+        cleanTopic
+      );
+
+      console.log(
+        "Level:",
+        level
+      );
+
+      console.log(
+        "Duration:",
+        weeks
+      );
+
+      // ------------------------------------------------------
+      // API REQUEST
+      // ------------------------------------------------------
+
       const response = await fetch(
-        "http://127.0.0.1:8000/api/v1/learning-plan",
+        `${API_URL}/api/v1/learning-plan`,
         {
           method: "POST",
 
           headers: {
-            "Content-Type": "application/json",
+            "Content-Type":
+              "application/json",
+
+            Accept:
+              "application/json",
           },
 
           body: JSON.stringify({
-            topic: topic.trim(),
+            topic: cleanTopic,
+
             level: level,
+
             duration_weeks: weeks,
           }),
         }
       );
 
-      const data = await response.json().catch(() => null);
+      console.log(
+        "HTTP STATUS:",
+        response.status
+      );
 
-      if (!response.ok) {
+      // ------------------------------------------------------
+      // READ RESPONSE
+      // ------------------------------------------------------
+
+      const rawText =
+        await response.text();
+
+      console.log(
+        "RAW BACKEND RESPONSE:",
+        rawText
+      );
+
+      let data = null;
+
+      try {
+        data = rawText
+          ? JSON.parse(rawText)
+          : null;
+      } catch {
         throw new Error(
-          data?.detail
-            ? typeof data.detail === "string"
-              ? data.detail
-              : JSON.stringify(data.detail)
-            : `API Error: ${response.status}`
+          "Backend returned invalid JSON."
         );
       }
 
-      // Reset progress for new plan
+      console.log(
+        "PARSED BACKEND DATA:",
+        data
+      );
+
+      // ------------------------------------------------------
+      // HANDLE API ERROR
+      // ------------------------------------------------------
+
+      if (!response.ok) {
+        let backendError =
+          `API Error: ${response.status}`;
+
+        if (
+          Array.isArray(
+            data?.detail
+          )
+        ) {
+          backendError =
+            data.detail
+              .map(
+                (item) =>
+                  item?.msg ||
+                  String(item)
+              )
+              .join(", ");
+        } else if (
+          typeof data?.detail ===
+          "string"
+        ) {
+          backendError =
+            data.detail;
+        } else if (
+          data?.message
+        ) {
+          backendError =
+            data.message;
+        }
+
+        throw new Error(
+          backendError
+        );
+      }
+
+      // ------------------------------------------------------
+      // EMPTY RESPONSE
+      // ------------------------------------------------------
+
+      if (!data) {
+        throw new Error(
+          "Backend returned an empty response."
+        );
+      }
+
+      // ------------------------------------------------------
+      // VALIDATE WEEKS
+      // ------------------------------------------------------
+
+      if (
+        !Array.isArray(
+          data.weeks
+        ) ||
+        data.weeks.length === 0
+      ) {
+        throw new Error(
+          "Backend returned a learning plan without any weeks."
+        );
+      }
+
+      // ------------------------------------------------------
+      // RESET PROGRESS FOR NEW PLAN
+      // ------------------------------------------------------
+
       setCompletedWeeks([]);
 
-      // Save generated plan
+      // ------------------------------------------------------
+      // SAVE PLAN
+      // ------------------------------------------------------
+
       setPlan(data);
 
+      console.log(
+        "Learning plan generated successfully."
+      );
     } catch (err) {
       console.error(
-        "Learning Plan Error:",
-        err
+        "================================="
       );
+
+      console.error(
+        "LEARNING PLAN ERROR"
+      );
+
+      console.error(
+        "================================="
+      );
+
+      console.error(err);
+
+      setPlan(null);
 
       setError(
-        err.message ||
+        err?.message ||
           "Something went wrong while generating the learning plan."
       );
-
     } finally {
       setLoading(false);
     }
   };
 
-  // ==========================================
+  // ==========================================================
   // TOGGLE WEEK COMPLETION
-  // ==========================================
+  // ==========================================================
 
-  const toggleWeek = (weekNumber) => {
-    setCompletedWeeks((previousWeeks) => {
-      if (previousWeeks.includes(weekNumber)) {
-        return previousWeeks.filter(
-          (week) => week !== weekNumber
-        );
+  const toggleWeek = (
+    weekNumber
+  ) => {
+    setCompletedWeeks(
+      (previousWeeks) => {
+        if (
+          previousWeeks.includes(
+            weekNumber
+          )
+        ) {
+          return previousWeeks.filter(
+            (week) =>
+              week !== weekNumber
+          );
+        }
+
+        return [
+          ...previousWeeks,
+          weekNumber,
+        ];
       }
-
-      return [
-        ...previousWeeks,
-        weekNumber,
-      ];
-    });
+    );
   };
 
-  // ==========================================
+  // ==========================================================
   // PROGRESS CALCULATION
-  // ==========================================
+  // ==========================================================
 
-  const totalWeeks = plan?.weeks?.length || 0;
+  const totalWeeks =
+    Array.isArray(plan?.weeks)
+      ? plan.weeks.length
+      : 0;
 
-  const completedCount = completedWeeks.filter(
-    (weekNumber) =>
-      plan?.weeks?.some(
-        (week) => week.week === weekNumber
-      )
-  ).length;
+  const completedCount =
+    completedWeeks.filter(
+      (weekNumber) =>
+        plan?.weeks?.some(
+          (week) =>
+            week.week ===
+            weekNumber
+        )
+    ).length;
 
   const progressPercentage =
     totalWeeks > 0
       ? Math.round(
-          (completedCount / totalWeeks) * 100
+          (completedCount /
+            totalWeeks) *
+            100
         )
       : 0;
+
+  // ==========================================================
+  // UI
+  // ==========================================================
 
   return (
     <main className="learning-page">
 
-      {/* ======================================
-          HEADER
-      ====================================== */}
+      {/* ====================================================
+          PAGE HEADER
+      ==================================================== */}
 
       <section className="learning-header">
 
@@ -178,22 +426,28 @@ function LearningPlan() {
         </h1>
 
         <p className="welcome-text">
-          Generate your personalized AI learning roadmap.
+          Generate your personalized AI
+          learning roadmap.
         </p>
 
       </section>
 
-      {/* ======================================
+      {/* ====================================================
           FORM CARD
-      ====================================== */}
+      ==================================================== */}
 
       <section className="learning-plan-card">
 
         <div className="learning-plan-header">
 
           <span className="card-label">
-            <Sparkles size={14} />
+
+            <Sparkles
+              size={14}
+            />
+
             &nbsp; AI LEARNING PLAN
+
           </span>
 
           <h2>
@@ -201,50 +455,71 @@ function LearningPlan() {
           </h2>
 
           <p>
-            Enter your role, experience level,
-            and preferred learning duration.
+            Enter your role, experience
+            level, and preferred learning
+            duration.
           </p>
 
         </div>
 
         <div className="learning-plan-form-content">
 
-          {/* TOPIC */}
+          {/* ==================================================
+              TOPIC
+          ================================================== */}
 
           <div className="learning-field">
 
             <label htmlFor="learning-topic">
-              <BookOpen size={15} />
+
+              <BookOpen
+                size={15}
+              />
+
               Learning Topic / Role
+
             </label>
 
             <input
               id="learning-topic"
               type="text"
               value={topic}
-              onChange={(e) =>
-                setTopic(e.target.value)
+              onChange={(event) =>
+                setTopic(
+                  event.target.value
+                )
               }
               placeholder="Example: Machine Learning Engineer"
+              disabled={loading}
             />
 
           </div>
 
-          {/* LEVEL */}
+          {/* ==================================================
+              LEVEL
+          ================================================== */}
 
           <div className="learning-field">
 
             <label htmlFor="learning-level">
-              <Target size={15} />
+
+              <Target
+                size={15}
+              />
+
               Experience Level
+
             </label>
 
             <select
               id="learning-level"
               value={level}
-              onChange={(e) =>
-                setLevel(e.target.value)
+              onChange={(event) =>
+                setLevel(
+                  event.target.value
+                )
               }
+              disabled={loading}
             >
 
               <option value="beginner">
@@ -263,30 +538,56 @@ function LearningPlan() {
 
           </div>
 
-          {/* DURATION */}
+          {/* ==================================================
+              DURATION
+          ================================================== */}
 
           <div className="learning-field">
 
             <label htmlFor="learning-duration">
-              <Clock size={15} />
+
+              <Clock
+                size={15}
+              />
+
               Duration
+
             </label>
 
             <select
               id="learning-duration"
               value={duration}
-              onChange={(e) =>
-                setDuration(e.target.value)
+              onChange={(event) =>
+                setDuration(
+                  event.target.value
+                )
               }
+              disabled={loading}
             >
 
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(
+              {[
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+              ].map(
                 (week) => (
                   <option
                     key={week}
                     value={week}
                   >
-                    {week} {week === 1 ? "Week" : "Weeks"}
+                    {week}{" "}
+                    {week === 1
+                      ? "Week"
+                      : "Weeks"}
                   </option>
                 )
               )}
@@ -295,14 +596,18 @@ function LearningPlan() {
 
           </div>
 
-          {/* GENERATE BUTTON */}
+          {/* ==================================================
+              GENERATE BUTTON
+          ================================================== */}
 
           <div className="generate-button-wrapper">
 
             <button
               type="button"
               className="generate-button"
-              onClick={generatePlan}
+              onClick={
+                generatePlan
+              }
               disabled={loading}
             >
 
@@ -311,7 +616,10 @@ function LearningPlan() {
               ) : (
                 <>
                   Generate Learning Plan
-                  <ArrowRight size={18} />
+
+                  <ArrowRight
+                    size={18}
+                  />
                 </>
               )}
 
@@ -323,24 +631,32 @@ function LearningPlan() {
 
       </section>
 
-      {/* ======================================
+      {/* ====================================================
           ERROR
-      ====================================== */}
+      ==================================================== */}
 
       {error && (
         <div className="error-message">
+          <strong>
+            Learning Plan Error:
+          </strong>
+
+          <br />
+
           {error}
         </div>
       )}
 
-      {/* ======================================
+      {/* ====================================================
           GENERATED PLAN
-      ====================================== */}
+      ==================================================== */}
 
       {plan && (
         <section className="learning-plan-result">
 
-          {/* RESULT HEADER */}
+          {/* ==================================================
+              RESULT HEADER
+          ================================================== */}
 
           <div className="result-header">
 
@@ -365,16 +681,17 @@ function LearningPlan() {
               Duration:{" "}
 
               <strong>
-                {plan.duration_weeks} weeks
+                {plan.duration_weeks}{" "}
+                weeks
               </strong>
 
             </p>
 
           </div>
 
-          {/* ==================================
-              PROGRESS SECTION
-          ================================== */}
+          {/* ==================================================
+              PROGRESS
+          ================================================== */}
 
           <div className="learning-progress-card">
 
@@ -401,11 +718,15 @@ function LearningPlan() {
             <div className="learning-progress-info">
 
               <span>
-                {completedCount} of {totalWeeks} weeks completed
+                {completedCount} of{" "}
+                {totalWeeks}{" "}
+                weeks completed
               </span>
 
               <span>
-                {totalWeeks - completedCount} remaining
+                {totalWeeks -
+                  completedCount}{" "}
+                remaining
               </span>
 
             </div>
@@ -423,107 +744,138 @@ function LearningPlan() {
 
           </div>
 
-          {/* ==================================
+          {/* ==================================================
               WEEKS
-          ================================== */}
+          ================================================== */}
 
           <div className="weeks-container">
 
-            {plan.weeks?.map((week) => {
+            {plan.weeks?.map(
+              (week) => {
 
-              const isCompleted =
-                completedWeeks.includes(week.week);
+                const isCompleted =
+                  completedWeeks.includes(
+                    week.week
+                  );
 
-              return (
+                return (
+                  <article
+                    key={
+                      week.week
+                    }
+                    className={`week-card ${
+                      isCompleted
+                        ? "week-completed"
+                        : ""
+                    }`}
+                  >
 
-                <article
-                  key={week.week}
-                  className={`week-card ${
-                    isCompleted
-                      ? "week-completed"
-                      : ""
-                  }`}
-                >
+                    <span className="week-number">
+                      WEEK{" "}
+                      {week.week}
+                    </span>
 
-                  <span className="week-number">
-                    WEEK {week.week}
-                  </span>
+                    <h3>
+                      {week.title}
+                    </h3>
 
-                  <h3>
-                    {week.title}
-                  </h3>
+                    <div className="week-content">
 
-                  <div className="week-content">
+                      <h4>
+                        Topics
+                      </h4>
 
-                    <h4>
-                      Topics
-                    </h4>
+                      <ul>
 
-                    <ul>
+                        {Array.isArray(
+                          week.topics
+                        ) &&
+                          week.topics.map(
+                            (
+                              topicItem,
+                              index
+                            ) => (
+                              <li
+                                key={
+                                  index
+                                }
+                              >
+                                {
+                                  topicItem
+                                }
+                              </li>
+                            )
+                          )}
 
-                      {week.topics?.map(
-                        (topicItem, index) => (
-                          <li key={index}>
-                            {topicItem}
-                          </li>
-                        )
-                      )}
+                      </ul>
 
-                    </ul>
+                      {/* ====================================
+                          PRACTICE TASK
+                      ==================================== */}
 
-                    {/* PRACTICE */}
+                      <div className="practice-box">
 
-                    <div className="practice-box">
+                        <span>
+                          PRACTICE TASK
+                        </span>
 
-                      <span>
-                        PRACTICE TASK
-                      </span>
+                        <p>
+                          {week.practice_task ||
+                            "Complete the practical exercises for this week."}
+                        </p>
 
-                      <p>
-                        {week.practice_task}
-                      </p>
+                      </div>
+
+                      {/* ====================================
+                          COMPLETE BUTTON
+                      ==================================== */}
+
+                      <button
+                        type="button"
+                        className={`complete-week-button ${
+                          isCompleted
+                            ? "completed"
+                            : ""
+                        }`}
+                        onClick={() =>
+                          toggleWeek(
+                            week.week
+                          )
+                        }
+                      >
+
+                        {isCompleted ? (
+                          <>
+                            <CheckCircle2
+                              size={18}
+                            />
+
+                            Completed
+                          </>
+                        ) : (
+                          <>
+                            <Circle
+                              size={18}
+                            />
+
+                            Mark as Complete
+                          </>
+                        )}
+
+                      </button>
 
                     </div>
 
-                    {/* COMPLETE BUTTON */}
-
-                    <button
-                      type="button"
-                      className={`complete-week-button ${
-                        isCompleted
-                          ? "completed"
-                          : ""
-                      }`}
-                      onClick={() =>
-                        toggleWeek(week.week)
-                      }
-                    >
-
-                      {isCompleted ? (
-                        <>
-                          <CheckCircle2 size={18} />
-                          Completed
-                        </>
-                      ) : (
-                        <>
-                          <Circle size={18} />
-                          Mark as Complete
-                        </>
-                      )}
-
-                    </button>
-
-                  </div>
-
-                </article>
-              );
-            })}
+                  </article>
+                );
+              }
+            )}
 
           </div>
 
-          {/* ==================================
+          {/* ==================================================
               FINAL PROJECT
-          ================================== */}
+          ================================================== */}
 
           {plan.final_project && (
             <div className="final-project-card">
@@ -537,8 +889,9 @@ function LearningPlan() {
               </h3>
 
               <p>
-                Apply everything you learned in
-                this personalized final project.
+                Apply everything you learned
+                in this personalized final
+                project.
               </p>
 
             </div>

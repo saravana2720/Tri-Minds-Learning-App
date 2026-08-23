@@ -9,7 +9,20 @@ import {
   BookOpen,
 } from "lucide-react";
 
-const API_URL = "http://127.0.0.1:8000/api/v1/tutor";
+// =====================================================
+// API CONFIGURATION
+// =====================================================
+
+const API_BASE_URL = (
+  import.meta.env.VITE_API_URL ||
+  "http://127.0.0.1:8000"
+).replace(/\/+$/, "");
+
+const API_URL = `${API_BASE_URL}/api/v1/tutor`;
+
+// =====================================================
+// INITIAL MESSAGE
+// =====================================================
 
 const INITIAL_MESSAGE = {
   role: "assistant",
@@ -17,21 +30,44 @@ const INITIAL_MESSAGE = {
     "Hello! I'm your AI Tutor 👋\n\nAsk me anything about AI, Machine Learning, Python, Deep Learning, or any topic you're learning.",
 };
 
+// =====================================================
+// COMPONENT
+// =====================================================
+
 function AITutor() {
-  const [topic, setTopic] = useState("Machine Learning");
-  const [level, setLevel] = useState("beginner");
+  // ===================================================
+  // FORM STATE
+  // ===================================================
+
+  const [topic, setTopic] = useState(
+    "Machine Learning"
+  );
+
+  const [level, setLevel] = useState(
+    "beginner"
+  );
+
   const [message, setMessage] = useState("");
+
+  // ===================================================
+  // UI STATE
+  // ===================================================
+
   const [loading, setLoading] = useState(false);
 
   const [messages, setMessages] = useState([
     INITIAL_MESSAGE,
   ]);
 
+  // ===================================================
+  // CHAT END REF
+  // ===================================================
+
   const chatEndRef = useRef(null);
 
-  /* =====================================================
-     AUTO SCROLL
-  ===================================================== */
+  // ===================================================
+  // AUTO SCROLL
+  // ===================================================
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({
@@ -39,254 +75,466 @@ function AITutor() {
     });
   }, [messages, loading]);
 
-  /* =====================================================
-     CLEAR CHAT
-  ===================================================== */
+  // ===================================================
+  // CLEAR CHAT
+  // ===================================================
 
   const clearChat = () => {
-    setMessages([INITIAL_MESSAGE]);
+    if (loading) {
+      return;
+    }
+
+    setMessages([
+      INITIAL_MESSAGE,
+    ]);
+
+    setMessage("");
   };
 
-  /* =====================================================
-     FORMAT BACKEND RESPONSE
-  ===================================================== */
+  // ===================================================
+  // FORMAT BACKEND RESPONSE
+  // ===================================================
 
   const formatTutorResponse = (data) => {
     const sections = [];
 
-    if (data.definition) {
+    if (data?.definition) {
       sections.push(
         `📘 Definition\n${data.definition}`
       );
     }
 
-    if (data.explanation) {
+    if (data?.explanation) {
       sections.push(
         `💡 Explanation\n${data.explanation}`
       );
     }
 
-    if (data.intuition) {
+    if (data?.intuition) {
       sections.push(
         `🧠 Intuition\n${data.intuition}`
       );
     }
 
-    if (data.real_world_example) {
+    if (data?.real_world_example) {
       sections.push(
         `🌍 Real-World Example\n${data.real_world_example}`
       );
     }
 
-    if (data.code) {
+    if (data?.code) {
       sections.push(
         `💻 Code Example\n${data.code}`
       );
     }
 
-    if (data.code_explanation) {
+    if (data?.code_explanation) {
       sections.push(
         `🔍 Code Explanation\n${data.code_explanation}`
       );
     }
 
-    if (data.common_mistakes) {
-      const mistakes = Array.isArray(data.common_mistakes)
+    if (data?.common_mistakes) {
+      const mistakes = Array.isArray(
+        data.common_mistakes
+      )
         ? data.common_mistakes
-            .map((item) => `• ${item}`)
+            .map(
+              (item) => `• ${item}`
+            )
             .join("\n")
-        : data.common_mistakes;
+        : String(
+            data.common_mistakes
+          );
 
       sections.push(
         `⚠️ Common Mistakes\n${mistakes}`
       );
     }
 
-    if (data.when_to_use) {
+    if (data?.when_to_use) {
       sections.push(
         `✅ When to Use\n${data.when_to_use}`
       );
     }
 
-    if (data.when_not_to_use) {
+    if (data?.when_not_to_use) {
       sections.push(
         `🚫 When Not to Use\n${data.when_not_to_use}`
       );
     }
 
-    if (data.summary) {
+    if (data?.summary) {
       sections.push(
         `📝 Summary\n${data.summary}`
       );
     }
 
-    if (data.follow_up_question) {
+    if (data?.follow_up_question) {
       sections.push(
         `❓ Follow-up\n${data.follow_up_question}`
       );
     }
 
-    return sections.join("\n\n");
+    // =================================================
+    // FALLBACK RESPONSES
+    // =================================================
+
+    if (
+      sections.length === 0 &&
+      typeof data?.answer === "string"
+    ) {
+      return data.answer.trim();
+    }
+
+    if (
+      sections.length === 0 &&
+      typeof data?.response === "string"
+    ) {
+      return data.response.trim();
+    }
+
+    if (
+      sections.length === 0 &&
+      typeof data?.message === "string"
+    ) {
+      return data.message.trim();
+    }
+
+    return sections.join(
+      "\n\n"
+    );
   };
 
-  /* =====================================================
-     SEND MESSAGE
-  ===================================================== */
+  // ===================================================
+  // FORMAT BACKEND ERROR
+  // ===================================================
+
+  const getBackendError = (
+    data,
+    status
+  ) => {
+    if (
+      Array.isArray(
+        data?.detail
+      )
+    ) {
+      return data.detail
+        .map(
+          (item) =>
+            item?.msg ||
+            String(item)
+        )
+        .join(", ");
+    }
+
+    if (
+      typeof data?.detail ===
+      "string"
+    ) {
+      return data.detail;
+    }
+
+    if (
+      typeof data?.message ===
+      "string"
+    ) {
+      return data.message;
+    }
+
+    if (
+      typeof data?.error ===
+      "string"
+    ) {
+      return data.error;
+    }
+
+    return `Tutor request failed. HTTP ${status}.`;
+  };
+
+  // ===================================================
+  // SEND MESSAGE
+  // ===================================================
 
   const sendMessage = async () => {
-    if (!message.trim() || loading) return;
+    const userMessage =
+      message.trim();
 
-    const userMessage = message.trim();
+    if (
+      !userMessage ||
+      loading
+    ) {
+      return;
+    }
 
-    // Add user message
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "user",
-        content: userMessage,
-      },
-    ]);
+    // =================================================
+    // ADD USER MESSAGE
+    // =================================================
+
+    setMessages(
+      (previousMessages) => [
+        ...previousMessages,
+        {
+          role: "user",
+          content:
+            userMessage,
+        },
+      ]
+    );
 
     setMessage("");
     setLoading(true);
 
     try {
-      console.log("=================================");
-      console.log("AI TUTOR REQUEST");
-      console.log("=================================");
-      console.log("URL:", API_URL);
-      console.log("Topic:", topic);
-      console.log("Level:", level);
-      console.log("Question:", userMessage);
+      // ===============================================
+      // DEBUG LOG
+      // ===============================================
 
-      const response = await fetch(API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          topic: topic.trim() || "General Learning",
-          level: level,
-          question: userMessage,
-        }),
-      });
+      console.log(
+        "================================="
+      );
 
-      console.log("HTTP STATUS:", response.status);
+      console.log(
+        "AI TUTOR REQUEST"
+      );
 
-      const rawText = await response.text();
+      console.log(
+        "================================="
+      );
 
-      console.log("RAW BACKEND RESPONSE:");
-      console.log(rawText);
+      console.log(
+        "API URL:",
+        API_URL
+      );
 
-      let data;
+      console.log(
+        "Topic:",
+        topic
+      );
 
-      try {
-        data = JSON.parse(rawText);
-      } catch (error) {
-        throw new Error(
-          `Backend returned invalid JSON:\n${rawText}`
+      console.log(
+        "Level:",
+        level
+      );
+
+      console.log(
+        "Question:",
+        userMessage
+      );
+
+      // ===============================================
+      // API REQUEST
+      // ===============================================
+
+      const response =
+        await fetch(
+          API_URL,
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+
+              Accept:
+                "application/json",
+            },
+
+            body: JSON.stringify({
+              topic:
+                topic.trim() ||
+                "General Learning",
+
+              level,
+
+              question:
+                userMessage,
+            }),
+          }
         );
+
+      // ===============================================
+      // RESPONSE TEXT
+      // ===============================================
+
+      console.log(
+        "HTTP STATUS:",
+        response.status
+      );
+
+      const rawText =
+        await response.text();
+
+      console.log(
+        "RAW BACKEND RESPONSE:",
+        rawText
+      );
+
+      // ===============================================
+      // PARSE JSON
+      // ===============================================
+
+      let data = null;
+
+      if (rawText.trim()) {
+        try {
+          data =
+            JSON.parse(
+              rawText
+            );
+        } catch {
+          throw new Error(
+            `Backend returned invalid JSON:\n${rawText}`
+          );
+        }
       }
 
-      console.log("PARSED BACKEND DATA:");
-      console.log(data);
+      console.log(
+        "PARSED BACKEND DATA:",
+        data
+      );
 
-      /* ================================================
-         BACKEND ERROR
-      ================================================= */
+      // ===============================================
+      // HTTP ERROR
+      // ===============================================
 
       if (!response.ok) {
-        let backendError = "Tutor request failed.";
-
-        if (Array.isArray(data?.detail)) {
-          backendError = data.detail
-            .map((item) => item.msg)
-            .join(", ");
-        } else if (typeof data?.detail === "string") {
-          backendError = data.detail;
-        } else if (data?.message) {
-          backendError = data.message;
-        }
-
-        throw new Error(backendError);
+        throw new Error(
+          getBackendError(
+            data,
+            response.status
+          )
+        );
       }
 
-      /* ================================================
-         FORMAT TUTOR RESPONSE
-      ================================================= */
+      // ===============================================
+      // EMPTY RESPONSE
+      // ===============================================
 
-      const answer = formatTutorResponse(data);
+      if (!data) {
+        throw new Error(
+          "Backend returned an empty response."
+        );
+      }
 
-      console.log("FORMATTED AI ANSWER:");
-      console.log(answer);
+      // ===============================================
+      // FORMAT AI RESPONSE
+      // ===============================================
 
-      if (!answer.trim()) {
-        console.error(
-          "Backend returned data, but no tutor fields were found:"
+      const answer =
+        formatTutorResponse(
+          data
         );
 
-        console.error(data);
+      console.log(
+        "FORMATTED AI ANSWER:",
+        answer
+      );
+
+      // ===============================================
+      // EMPTY AI RESPONSE
+      // ===============================================
+
+      if (
+        !answer ||
+        !answer.trim()
+      ) {
+        console.error(
+          "Backend returned data but no supported TutorResponse fields were found."
+        );
+
+        console.error(
+          "Backend data:",
+          data
+        );
 
         throw new Error(
-          "AI Tutor returned an empty response. Check the backend TutorResponse."
+          "AI Tutor returned an empty response. Check the backend TutorResponse schema."
         );
       }
 
-      /* ================================================
-         ADD AI RESPONSE
-      ================================================= */
+      // ===============================================
+      // ADD ASSISTANT RESPONSE
+      // ===============================================
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: answer,
-        },
-      ]);
+      setMessages(
+        (previousMessages) => [
+          ...previousMessages,
+          {
+            role: "assistant",
+            content: answer,
+          },
+        ]
+      );
     } catch (error) {
-      console.error("=================================");
-      console.error("AI TUTOR ERROR");
-      console.error("=================================");
-      console.error(error);
+      // ===============================================
+      // ERROR LOG
+      // ===============================================
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          error: true,
-          content:
-            error?.message ||
-            "Unable to connect to AI Tutor.",
-        },
-      ]);
+      console.error(
+        "================================="
+      );
+
+      console.error(
+        "AI TUTOR ERROR"
+      );
+
+      console.error(
+        "================================="
+      );
+
+      console.error(
+        error
+      );
+
+      // ===============================================
+      // SHOW ERROR IN CHAT
+      // ===============================================
+
+      setMessages(
+        (previousMessages) => [
+          ...previousMessages,
+          {
+            role: "assistant",
+            error: true,
+            content:
+              error?.message ||
+              "Unable to connect to AI Tutor.",
+          },
+        ]
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  /* =====================================================
-     ENTER KEY
-  ===================================================== */
+  // ===================================================
+  // ENTER KEY
+  // ===================================================
 
-  const handleKeyDown = (event) => {
+  const handleKeyDown = (
+    event
+  ) => {
     if (
       event.key === "Enter" &&
       !event.shiftKey
     ) {
       event.preventDefault();
+
       sendMessage();
     }
   };
 
-  /* =====================================================
-     UI
-  ===================================================== */
+  // ===================================================
+  // UI
+  // ===================================================
 
   return (
     <main className="tutor-page">
 
-      {/* PAGE HEADER */}
+      {/* =================================================
+          PAGE HEADER
+      ================================================= */}
 
       <section className="tutor-header">
 
@@ -299,17 +547,22 @@ function AITutor() {
         </h1>
 
         <p className="welcome-text">
-          Ask questions and get personalized explanations
+          Ask questions and get
+          personalized explanations
           from your AI Tutor.
         </p>
 
       </section>
 
-      {/* TUTOR CONTAINER */}
+      {/* =================================================
+          TUTOR CONTAINER
+      ================================================= */}
 
       <section className="tutor-container">
 
-        {/* TOP HEADER */}
+        {/* =================================================
+            TOP HEADER
+        ================================================= */}
 
         <div className="tutor-top">
 
@@ -330,27 +583,38 @@ function AITutor() {
               </h2>
 
               <p className="tutor-subtitle">
-                Your personal learning assistant
+                Your personal learning
+                assistant
               </p>
 
             </div>
 
           </div>
 
+          {/* ACTIONS */}
+
           <div className="tutor-actions">
 
             <div className="ai-status">
+
               <span className="status-dot" />
-              Online
+
+              {loading
+                ? "Thinking..."
+                : "Online"}
+
             </div>
 
             <button
               type="button"
               className="clear-button"
-              onClick={clearChat}
+              onClick={
+                clearChat
+              }
               disabled={loading}
             >
               <Trash2 size={15} />
+
               Clear
             </button>
 
@@ -358,43 +622,66 @@ function AITutor() {
 
         </div>
 
-        {/* TOPIC + LEVEL */}
+        {/* =================================================
+            TOPIC + LEVEL
+        ================================================= */}
 
         <div className="tutor-settings">
+
+          {/* TOPIC */}
 
           <div className="tutor-field">
 
             <label htmlFor="tutor-topic">
-              <BookOpen size={16} />
+
+              <BookOpen
+                size={16}
+              />
+
               Topic
+
             </label>
 
             <input
               id="tutor-topic"
               type="text"
               value={topic}
-              onChange={(e) =>
-                setTopic(e.target.value)
+              onChange={(event) =>
+                setTopic(
+                  event.target.value
+                )
               }
               placeholder="Enter learning topic"
+              disabled={loading}
             />
 
           </div>
 
+          {/* LEVEL */}
+
           <div className="tutor-field">
 
             <label htmlFor="tutor-level">
-              <Sparkles size={16} />
+
+              <Sparkles
+                size={16}
+              />
+
               Level
+
             </label>
 
             <select
               id="tutor-level"
               value={level}
-              onChange={(e) =>
-                setLevel(e.target.value)
+              onChange={(event) =>
+                setLevel(
+                  event.target.value
+                )
               }
+              disabled={loading}
             >
+
               <option value="beginner">
                 Beginner
               </option>
@@ -406,59 +693,82 @@ function AITutor() {
               <option value="advanced">
                 Advanced
               </option>
+
             </select>
 
           </div>
 
         </div>
 
-        {/* CHAT */}
+        {/* =================================================
+            CHAT
+        ================================================= */}
 
         <div className="chat-container">
 
-          {messages.map((msg, index) => (
-
-            <div
-              key={index}
-              className={`chat-message ${
-                msg.role === "user"
-                  ? "user"
-                  : "assistant"
-              }`}
-            >
-
-              <div className="message-avatar">
-
-                {msg.role === "user" ? (
-                  <User size={17} />
-                ) : (
-                  <Bot size={17} />
-                )}
-
-              </div>
+          {messages.map(
+            (
+              msg,
+              index
+            ) => (
 
               <div
-                className={`message-content ${
-                  msg.error
-                    ? "message-error"
-                    : ""
+                key={`${msg.role}-${index}`}
+                className={`chat-message ${
+                  msg.role === "user"
+                    ? "user"
+                    : "assistant"
                 }`}
               >
-                {msg.content}
+
+                {/* MESSAGE AVATAR */}
+
+                <div className="message-avatar">
+
+                  {msg.role ===
+                  "user" ? (
+                    <User
+                      size={17}
+                    />
+                  ) : (
+                    <Bot
+                      size={17}
+                    />
+                  )}
+
+                </div>
+
+                {/* MESSAGE CONTENT */}
+
+                <div
+                  className={`message-content ${
+                    msg.error
+                      ? "message-error"
+                      : ""
+                  }`}
+                >
+                  {msg.content}
+                </div>
+
               </div>
 
-            </div>
+            )
+          )}
 
-          ))}
-
-          {/* LOADING */}
+          {/* =================================================
+              LOADING
+          ================================================= */}
 
           {loading && (
 
             <div className="chat-message assistant">
 
               <div className="message-avatar">
-                <Bot size={17} />
+
+                <Bot
+                  size={17}
+                />
+
               </div>
 
               <div className="message-content typing">
@@ -476,20 +786,30 @@ function AITutor() {
 
           )}
 
-          <div ref={chatEndRef} />
+          {/* SCROLL TARGET */}
+
+          <div
+            ref={chatEndRef}
+          />
 
         </div>
 
-        {/* INPUT */}
+        {/* =================================================
+            CHAT INPUT
+        ================================================= */}
 
         <div className="chat-input-container">
 
           <textarea
             value={message}
-            onChange={(e) =>
-              setMessage(e.target.value)
+            onChange={(event) =>
+              setMessage(
+                event.target.value
+              )
             }
-            onKeyDown={handleKeyDown}
+            onKeyDown={
+              handleKeyDown
+            }
             placeholder="Ask your AI Tutor anything..."
             rows={1}
             disabled={loading}
@@ -498,12 +818,16 @@ function AITutor() {
           <button
             type="button"
             className="send-button"
-            onClick={sendMessage}
+            onClick={
+              sendMessage
+            }
             disabled={
               loading ||
               !message.trim()
             }
+            aria-label="Send message"
           >
+
             {loading ? (
               <LoaderCircle
                 size={19}
@@ -512,12 +836,18 @@ function AITutor() {
             ) : (
               <Send size={19} />
             )}
+
           </button>
 
         </div>
 
+        {/* =================================================
+            HINT
+        ================================================= */}
+
         <p className="chat-hint">
-          Press Enter to send • Shift + Enter for new line
+          Press Enter to send •
+          Shift + Enter for new line
         </p>
 
       </section>

@@ -12,47 +12,61 @@ import {
   RotateCcw,
 } from "lucide-react";
 
+/* ============================================================
+   API CONFIGURATION
+   ============================================================ */
+
+const API_BASE_URL = (
+  import.meta.env.VITE_API_URL || ""
+).replace(/\/+$/, "");
+
+const API_URL =
+  `${API_BASE_URL}/api/v1/quiz`;
+
+/* ============================================================
+   LOCAL STORAGE
+   ============================================================ */
+
+const QUIZ_PROGRESS_KEY =
+  "tri-minds-quiz-progress";
+
+/* ============================================================
+   COMPONENT
+   ============================================================ */
+
 function Quiz() {
-  // ============================================================
-  // API
-  // ============================================================
+  /* ==========================================================
+     FORM STATE
+     ========================================================== */
 
-  const API_URL = "http://127.0.0.1:8000/api/v1/quiz";
+  const [topic, setTopic] =
+    useState("Machine Learning");
 
-  // ============================================================
-  // LOCAL STORAGE
-  // ============================================================
-
-  const QUIZ_PROGRESS_KEY = "tri-minds-quiz-progress";
-
-  // ============================================================
-  // FORM STATE
-  // ============================================================
-
-  const [topic, setTopic] = useState("Machine Learning");
-
-  const [level, setLevel] = useState("beginner");
+  const [level, setLevel] =
+    useState("beginner");
 
   const [numberOfQuestions, setNumberOfQuestions] =
     useState("5");
 
-  // ============================================================
-  // QUIZ STATE
-  // ============================================================
+  /* ==========================================================
+     QUIZ STATE
+     ========================================================== */
 
-  const [quiz, setQuiz] = useState(null);
+  const [quiz, setQuiz] =
+    useState(null);
 
   const [currentQuestion, setCurrentQuestion] =
     useState(0);
 
-  const [answers, setAnswers] = useState({});
+  const [answers, setAnswers] =
+    useState({});
 
   const [submitted, setSubmitted] =
     useState(false);
 
-  // ============================================================
-  // UI STATE
-  // ============================================================
+  /* ==========================================================
+     UI STATE
+     ========================================================== */
 
   const [loading, setLoading] =
     useState(false);
@@ -60,9 +74,9 @@ function Quiz() {
   const [error, setError] =
     useState("");
 
-  // ============================================================
-  // NORMALIZE TEXT
-  // ============================================================
+  /* ==========================================================
+     NORMALIZE TEXT
+     ========================================================== */
 
   const normalizeText = (text) => {
     if (
@@ -81,9 +95,9 @@ function Quiz() {
       .trim();
   };
 
-  // ============================================================
-  // NORMALIZE CORRECT ANSWER
-  // ============================================================
+  /* ==========================================================
+     NORMALIZE CORRECT ANSWER
+     ========================================================== */
 
   const normalizeCorrectAnswer = (
     correctAnswer,
@@ -110,9 +124,9 @@ function Quiz() {
       return "";
     }
 
-    // ----------------------------------------------------------
-    // EXACT OPTION MATCH
-    // ----------------------------------------------------------
+    /* --------------------------------------------------------
+       EXACT OPTION MATCH
+    -------------------------------------------------------- */
 
     const exactOption =
       options.find(
@@ -125,9 +139,9 @@ function Quiz() {
       return exactOption;
     }
 
-    // ----------------------------------------------------------
-    // A / B / C / D
-    // ----------------------------------------------------------
+    /* --------------------------------------------------------
+       A / B / C / D
+    -------------------------------------------------------- */
 
     if (/^[A-Da-d]$/.test(answer)) {
       const index =
@@ -138,9 +152,9 @@ function Quiz() {
       return options[index] || "";
     }
 
-    // ----------------------------------------------------------
-    // 1 / 2 / 3 / 4
-    // ----------------------------------------------------------
+    /* --------------------------------------------------------
+       1 / 2 / 3 / 4
+    -------------------------------------------------------- */
 
     if (/^[1-4]$/.test(answer)) {
       const index =
@@ -149,10 +163,9 @@ function Quiz() {
       return options[index] || "";
     }
 
-    // ----------------------------------------------------------
-    // A. Answer
-    // A) Answer
-    // ----------------------------------------------------------
+    /* --------------------------------------------------------
+       A. Answer / A) Answer
+    -------------------------------------------------------- */
 
     const letterMatch =
       answer.match(
@@ -160,20 +173,17 @@ function Quiz() {
       );
 
     if (letterMatch) {
-      const letter =
-        letterMatch[1]
-          .toUpperCase();
-
       const index =
-        letter.charCodeAt(0) - 65;
+        letterMatch[1]
+          .toUpperCase()
+          .charCodeAt(0) - 65;
 
       return options[index] || "";
     }
 
-    // ----------------------------------------------------------
-    // 1. Answer
-    // 1) Answer
-    // ----------------------------------------------------------
+    /* --------------------------------------------------------
+       1. Answer / 1) Answer
+    -------------------------------------------------------- */
 
     const numberMatch =
       answer.match(
@@ -190,9 +200,9 @@ function Quiz() {
     return answer;
   };
 
-  // ============================================================
-  // NORMALIZE QUESTION
-  // ============================================================
+  /* ==========================================================
+     NORMALIZE QUESTION
+     ========================================================== */
 
   const normalizeQuestion = (
     question,
@@ -205,9 +215,9 @@ function Quiz() {
       return null;
     }
 
-    // ----------------------------------------------------------
-    // QUESTION TEXT
-    // ----------------------------------------------------------
+    /* --------------------------------------------------------
+       QUESTION TEXT
+    -------------------------------------------------------- */
 
     const questionText =
       question.question ||
@@ -223,9 +233,9 @@ function Quiz() {
       return null;
     }
 
-    // ----------------------------------------------------------
-    // OPTIONS
-    // ----------------------------------------------------------
+    /* --------------------------------------------------------
+       OPTIONS
+    -------------------------------------------------------- */
 
     let options =
       Array.isArray(question.options)
@@ -253,13 +263,14 @@ function Quiz() {
       )
       .filter(Boolean);
 
-    // ----------------------------------------------------------
-    // REMOVE DUPLICATE OPTIONS
-    // ----------------------------------------------------------
+    /* --------------------------------------------------------
+       REMOVE DUPLICATE OPTIONS
+    -------------------------------------------------------- */
 
     const uniqueOptions = [];
 
-    const optionSet = new Set();
+    const optionSet =
+      new Set();
 
     options.forEach((option) => {
       const key =
@@ -267,14 +278,13 @@ function Quiz() {
 
       if (!optionSet.has(key)) {
         optionSet.add(key);
-
         uniqueOptions.push(option);
       }
     });
 
-    // ----------------------------------------------------------
-    // EXACTLY FOUR OPTIONS
-    // ----------------------------------------------------------
+    /* --------------------------------------------------------
+       EXACTLY FOUR OPTIONS
+    -------------------------------------------------------- */
 
     if (
       uniqueOptions.length !== 4
@@ -292,9 +302,9 @@ function Quiz() {
       return null;
     }
 
-    // ----------------------------------------------------------
-    // CORRECT ANSWER
-    // ----------------------------------------------------------
+    /* --------------------------------------------------------
+       CORRECT ANSWER
+    -------------------------------------------------------- */
 
     const rawCorrectAnswer =
       question.correct_answer ??
@@ -324,11 +334,8 @@ function Quiz() {
         {
           question:
             cleanQuestionText,
-
           rawCorrectAnswer,
-
           correctAnswer,
-
           options:
             uniqueOptions,
         }
@@ -337,18 +344,18 @@ function Quiz() {
       return null;
     }
 
-    // ----------------------------------------------------------
-    // EXPLANATION
-    // ----------------------------------------------------------
+    /* --------------------------------------------------------
+       EXPLANATION
+    -------------------------------------------------------- */
 
     const explanation =
       question.explanation ||
       question.reason ||
       "No explanation provided.";
 
-    // ----------------------------------------------------------
-    // ID
-    // ----------------------------------------------------------
+    /* --------------------------------------------------------
+       GENERATED ID
+    -------------------------------------------------------- */
 
     const generatedId =
       `question-${index}-${normalizeText(
@@ -360,9 +367,9 @@ function Quiz() {
         )
         .substring(0, 50)}`;
 
-    // ----------------------------------------------------------
-    // FINAL QUESTION
-    // ----------------------------------------------------------
+    /* --------------------------------------------------------
+       FINAL QUESTION
+    -------------------------------------------------------- */
 
     return {
       ...question,
@@ -388,9 +395,9 @@ function Quiz() {
     };
   };
 
-  // ============================================================
-  // REMOVE DUPLICATE QUESTIONS
-  // ============================================================
+  /* ==========================================================
+     REMOVE DUPLICATE QUESTIONS
+     ========================================================== */
 
   const removeDuplicateQuestions = (
     questions
@@ -407,7 +414,10 @@ function Quiz() {
       new Set();
 
     questions.forEach(
-      (question, index) => {
+      (
+        question,
+        index
+      ) => {
         const cleanQuestion =
           normalizeQuestion(
             question,
@@ -438,9 +448,9 @@ function Quiz() {
     return uniqueQuestions;
   };
 
-  // ============================================================
-  // EXTRACT QUESTIONS
-  // ============================================================
+  /* ==========================================================
+     EXTRACT QUESTIONS
+     ========================================================== */
 
   const extractQuestions = (
     data
@@ -469,103 +479,144 @@ function Quiz() {
       return data.data.questions;
     }
 
-    if (Array.isArray(data)) {
+    if (
+      Array.isArray(data)
+    ) {
       return data;
     }
 
     return [];
   };
 
-  // ============================================================
-  // REQUEST QUIZ
-  // ============================================================
+  /* ==========================================================
+     API ERROR MESSAGE
+     ========================================================== */
 
-  const requestQuiz =
-    async () => {
-      const cleanTopic =
-        topic.trim();
+  const getApiErrorMessage = (
+    data,
+    status
+  ) => {
+    if (
+      Array.isArray(
+        data?.detail
+      )
+    ) {
+      return data.detail
+        .map(
+          (item) =>
+            item?.msg ||
+            String(item)
+        )
+        .join(", ");
+    }
 
-      const questionCount =
-        Number(
-          numberOfQuestions
-        );
+    if (
+      typeof data?.detail ===
+      "string"
+    ) {
+      return data.detail;
+    }
 
-      const response =
-        await fetch(
-          API_URL,
-          {
-            method: "POST",
+    if (
+      typeof data?.message ===
+      "string"
+    ) {
+      return data.message;
+    }
 
-            headers: {
-              "Content-Type":
-                "application/json",
+    return `API Error: ${status}`;
+  };
 
-              Accept:
-                "application/json",
-            },
+  /* ==========================================================
+     REQUEST QUIZ
+     ========================================================== */
 
-            body:
-              JSON.stringify({
-                topic:
-                  cleanTopic,
+  const requestQuiz = async () => {
+    const cleanTopic =
+      topic.trim();
 
-                level,
+    const questionCount =
+      Number(
+        numberOfQuestions
+      );
 
-                number_of_questions:
-                  questionCount,
-              }),
-          }
-        );
+    if (!API_BASE_URL) {
+      throw new Error(
+        "VITE_API_URL is not configured. Check frontend/.env"
+      );
+    }
 
-      const responseText =
-        await response.text();
+    console.log(
+      "Quiz API URL:",
+      API_URL
+    );
 
-      let data = null;
+    const response =
+      await fetch(
+        API_URL,
+        {
+          method: "POST",
 
-      try {
-        data =
-          responseText
-            ? JSON.parse(
-                responseText
-              )
-            : null;
-      } catch {
-        throw new Error(
-          "Backend returned invalid JSON."
-        );
-      }
+          headers: {
+            "Content-Type":
+              "application/json",
 
-      if (!response.ok) {
-        let message =
-          `API Error: ${response.status}`;
+            Accept:
+              "application/json",
+          },
 
-        if (data?.detail) {
-          message =
-            typeof data.detail ===
-            "string"
-              ? data.detail
-              : JSON.stringify(
-                  data.detail
-                );
+          body:
+            JSON.stringify({
+              topic:
+                cleanTopic,
+
+              level,
+
+              number_of_questions:
+                questionCount,
+            }),
         }
+      );
 
-        throw new Error(
-          message
-        );
-      }
+    const responseText =
+      await response.text();
 
-      if (!data) {
-        throw new Error(
-          "Backend returned an empty response."
-        );
-      }
+    let data = null;
 
-      return data;
-    };
+    try {
+      data =
+        responseText
+          ? JSON.parse(
+              responseText
+            )
+          : null;
+    } catch {
+      throw new Error(
+        "Backend returned invalid JSON."
+      );
+    }
 
-  // ============================================================
-  // GENERATE QUIZ
-  // ============================================================
+    if (!response.ok) {
+      throw new Error(
+        getApiErrorMessage(
+          data,
+          response.status
+        )
+      );
+    }
+
+    if (!data) {
+      throw new Error(
+        "Backend returned an empty response."
+      );
+    }
+
+    return data;
+  };
+
+  /* ==========================================================
+     GENERATE QUIZ
+     ========================================================== */
 
   const generateQuiz =
     async () => {
@@ -573,23 +624,11 @@ function Quiz() {
         return;
       }
 
-      // --------------------------------------------------------
-      // RESET
-      // --------------------------------------------------------
-
       setError("");
-
       setQuiz(null);
-
       setCurrentQuestion(0);
-
       setAnswers({});
-
       setSubmitted(false);
-
-      // --------------------------------------------------------
-      // VALIDATE TOPIC
-      // --------------------------------------------------------
 
       const cleanTopic =
         topic.trim();
@@ -601,10 +640,6 @@ function Quiz() {
 
         return;
       }
-
-      // --------------------------------------------------------
-      // VALIDATE COUNT
-      // --------------------------------------------------------
 
       const questionCount =
         Number(
@@ -628,8 +663,45 @@ function Quiz() {
       setLoading(true);
 
       try {
+        console.log(
+          "================================="
+        );
+
+        console.log(
+          "QUIZ API REQUEST"
+        );
+
+        console.log(
+          "================================="
+        );
+
+        console.log(
+          "API URL:",
+          API_URL
+        );
+
+        console.log(
+          "Topic:",
+          cleanTopic
+        );
+
+        console.log(
+          "Level:",
+          level
+        );
+
+        console.log(
+          "Questions:",
+          questionCount
+        );
+
         const data =
           await requestQuiz();
+
+        console.log(
+          "QUIZ API RESPONSE:",
+          data
+        );
 
         const rawQuestions =
           extractQuestions(
@@ -664,9 +736,9 @@ function Quiz() {
             questionCount
           );
 
-        // ------------------------------------------------------
-        // STABLE IDS
-        // ------------------------------------------------------
+        /* ------------------------------------------------------
+           STABLE FRONTEND IDS
+        ------------------------------------------------------ */
 
         questions =
           questions.map(
@@ -681,9 +753,9 @@ function Quiz() {
             })
           );
 
-        // ------------------------------------------------------
-        // FINAL QUIZ
-        // ------------------------------------------------------
+        /* ------------------------------------------------------
+           FINAL QUIZ OBJECT
+        ------------------------------------------------------ */
 
         const finalQuiz = {
           topic:
@@ -704,9 +776,7 @@ function Quiz() {
         );
 
         setCurrentQuestion(0);
-
         setAnswers({});
-
         setSubmitted(false);
 
         window.scrollTo({
@@ -730,9 +800,9 @@ function Quiz() {
       }
     };
 
-  // ============================================================
-  // SELECT ANSWER
-  // ============================================================
+  /* ==========================================================
+     SELECT ANSWER
+     ========================================================== */
 
   const selectAnswer = (
     option
@@ -765,9 +835,9 @@ function Quiz() {
     );
   };
 
-  // ============================================================
-  // GO TO QUESTION
-  // ============================================================
+  /* ==========================================================
+     GO TO QUESTION
+     ========================================================== */
 
   const goToQuestion = (
     index
@@ -778,7 +848,8 @@ function Quiz() {
 
     if (
       index < 0 ||
-      index >= quiz.questions.length
+      index >=
+        quiz.questions.length
     ) {
       return;
     }
@@ -795,9 +866,9 @@ function Quiz() {
     });
   };
 
-  // ============================================================
-  // NEXT QUESTION
-  // ============================================================
+  /* ==========================================================
+     NEXT QUESTION
+     ========================================================== */
 
   const nextQuestion = () => {
     if (!quiz) {
@@ -814,9 +885,9 @@ function Quiz() {
     }
   };
 
-  // ============================================================
-  // PREVIOUS QUESTION
-  // ============================================================
+  /* ==========================================================
+     PREVIOUS QUESTION
+     ========================================================== */
 
   const previousQuestion = () => {
     if (
@@ -828,9 +899,9 @@ function Quiz() {
     }
   };
 
-  // ============================================================
-  // CALCULATE SCORE
-  // ============================================================
+  /* ==========================================================
+     CALCULATE SCORE
+     ========================================================== */
 
   const calculateScore = () => {
     if (!quiz) {
@@ -867,9 +938,9 @@ function Quiz() {
     );
   };
 
-  // ============================================================
-  // SAVE QUIZ PROGRESS
-  // ============================================================
+  /* ==========================================================
+     SAVE QUIZ PROGRESS
+     ========================================================== */
 
   const saveQuizProgress = () => {
     if (!quiz) {
@@ -883,8 +954,7 @@ function Quiz() {
       quiz.questions.length > 0
         ? Math.round(
             (finalScore /
-              quiz.questions
-                .length) *
+              quiz.questions.length) *
               100
           )
         : 0;
@@ -936,17 +1006,13 @@ function Quiz() {
         newResult
       );
 
-      // Keep latest 50 quiz results
-      const limitedResults =
-        results.slice(
-          0,
-          50
-        );
-
       localStorage.setItem(
         QUIZ_PROGRESS_KEY,
         JSON.stringify(
-          limitedResults
+          results.slice(
+            0,
+            50
+          )
         )
       );
     } catch (storageError) {
@@ -957,18 +1023,14 @@ function Quiz() {
     }
   };
 
-  // ============================================================
-  // SUBMIT QUIZ
-  // ============================================================
+  /* ==========================================================
+     SUBMIT QUIZ
+     ========================================================== */
 
   const submitQuiz = () => {
     if (!quiz) {
       return;
     }
-
-    // --------------------------------------------------------
-    // CHECK UNANSWERED QUESTIONS
-    // --------------------------------------------------------
 
     const unansweredIndexes =
       quiz.questions
@@ -1002,10 +1064,6 @@ function Quiz() {
       return;
     }
 
-    // --------------------------------------------------------
-    // SAVE RESULT
-    // --------------------------------------------------------
-
     saveQuizProgress();
 
     setError("");
@@ -1018,19 +1076,15 @@ function Quiz() {
     });
   };
 
-  // ============================================================
-  // RESTART QUIZ
-  // ============================================================
+  /* ==========================================================
+     RESTART QUIZ
+     ========================================================== */
 
   const restartQuiz = () => {
     setQuiz(null);
-
     setCurrentQuestion(0);
-
     setAnswers({});
-
     setSubmitted(false);
-
     setError("");
 
     window.scrollTo({
@@ -1039,9 +1093,9 @@ function Quiz() {
     });
   };
 
-  // ============================================================
-  // SCORE
-  // ============================================================
+  /* ==========================================================
+     SCORE
+     ========================================================== */
 
   const score =
     calculateScore();
@@ -1051,15 +1105,14 @@ function Quiz() {
     quiz.questions.length > 0
       ? Math.round(
           (score /
-            quiz.questions
-              .length) *
+            quiz.questions.length) *
             100
         )
       : 0;
 
-  // ============================================================
-  // RESULT SCREEN
-  // ============================================================
+  /* ==========================================================
+     RESULT SCREEN
+     ========================================================== */
 
   if (
     submitted &&
@@ -1067,7 +1120,9 @@ function Quiz() {
   ) {
     return (
       <main className="quiz-page">
+
         <section className="learning-header">
+
           <p className="welcome-label">
             AI ASSESSMENT
           </p>
@@ -1079,9 +1134,11 @@ function Quiz() {
           <p className="welcome-text">
             Here is your quiz performance.
           </p>
+
         </section>
 
         <section className="quiz-result-card">
+
           <span className="card-label">
             QUIZ COMPLETED
           </span>
@@ -1101,14 +1158,12 @@ function Quiz() {
             </strong>{" "}
             out of{" "}
             <strong>
-              {
-                quiz.questions
-                  .length
-              }
+              {quiz.questions.length}
             </strong>
           </p>
 
           <div className="quiz-result-actions">
+
             <button
               type="button"
               className="generate-button"
@@ -1122,10 +1177,13 @@ function Quiz() {
 
               Take Another Quiz
             </button>
+
           </div>
+
         </section>
 
         <section className="quiz-review">
+
           <h2>
             Answer Review
           </h2>
@@ -1155,7 +1213,9 @@ function Quiz() {
                   }
                   className="quiz-review-card"
                 >
+
                   <div className="quiz-review-header">
+
                     <span>
                       QUESTION{" "}
                       {index + 1}
@@ -1170,6 +1230,7 @@ function Quiz() {
                         size={20}
                       />
                     )}
+
                   </div>
 
                   <h3>
@@ -1196,6 +1257,7 @@ function Quiz() {
                   </p>
 
                   <div className="quiz-explanation">
+
                     <strong>
                       Explanation
                     </strong>
@@ -1205,19 +1267,23 @@ function Quiz() {
                         question.explanation
                       }
                     </p>
+
                   </div>
+
                 </article>
               );
             }
           )}
+
         </section>
+
       </main>
     );
   }
 
-  // ============================================================
-  // QUESTION SCREEN
-  // ============================================================
+  /* ==========================================================
+     QUESTION SCREEN
+     ========================================================== */
 
   if (quiz) {
     const question =
@@ -1238,10 +1304,6 @@ function Quiz() {
       currentQuestion ===
       quiz.questions.length - 1;
 
-    // ----------------------------------------------------------
-    // ANSWERED COUNT
-    // ----------------------------------------------------------
-
     const answeredCount =
       quiz.questions.filter(
         (questionItem) =>
@@ -1252,23 +1314,18 @@ function Quiz() {
           )
       ).length;
 
-    // ----------------------------------------------------------
-    // PROGRESS
-    //
-    // Progress is based on answered questions.
-    // ----------------------------------------------------------
-
     const progress =
       quiz.questions.length > 0
         ? (answeredCount /
-            quiz.questions
-              .length) *
+            quiz.questions.length) *
           100
         : 0;
 
     return (
       <main className="quiz-page">
+
         <section className="learning-header">
+
           <p className="welcome-label">
             AI ASSESSMENT
           </p>
@@ -1281,19 +1338,14 @@ function Quiz() {
             Question{" "}
             {currentQuestion + 1}{" "}
             of{" "}
-            {
-              quiz.questions
-                .length
-            }
+            {quiz.questions.length}
           </p>
-        </section>
 
-        {/* ====================================================
-            ERROR
-        ==================================================== */}
+        </section>
 
         {error && (
           <div className="error-message">
+
             <strong>
               Quiz Error:
             </strong>
@@ -1301,21 +1353,22 @@ function Quiz() {
             <br />
 
             {error}
+
           </div>
         )}
 
         <section className="quiz-question-card">
 
-          {/* ==================================================
-              QUESTION NAVIGATOR
-          ================================================== */}
+          {/* QUESTION NAVIGATOR */}
 
           <div className="question-navigator">
+
             {quiz.questions.map(
               (
                 questionItem,
                 index
               ) => {
+
                 const isCurrent =
                   currentQuestion ===
                   index;
@@ -1356,13 +1409,13 @@ function Quiz() {
                 );
               }
             )}
+
           </div>
 
-          {/* ==================================================
-              PROGRESS
-          ================================================== */}
+          {/* PROGRESS */}
 
           <div className="quiz-question-top">
+
             <span>
               QUESTION{" "}
               {currentQuestion + 1}
@@ -1374,9 +1427,11 @@ function Quiz() {
               )}
               %
             </span>
+
           </div>
 
           <div className="quiz-progress-bar">
+
             <div
               className="quiz-progress-value"
               style={{
@@ -1384,15 +1439,14 @@ function Quiz() {
                   `${progress}%`,
               }}
             />
+
           </div>
 
           <div className="quiz-progress-info">
+
             <span>
               {answeredCount} of{" "}
-              {
-                quiz.questions
-                  .length
-              }{" "}
+              {quiz.questions.length}{" "}
               answered
             </span>
 
@@ -1402,28 +1456,25 @@ function Quiz() {
               )}
               % complete
             </span>
+
           </div>
 
-          {/* ==================================================
-              QUESTION
-          ================================================== */}
+          {/* QUESTION */}
 
           <h2 className="quiz-question-title">
-            {
-              question.question
-            }
+            {question.question}
           </h2>
 
-          {/* ==================================================
-              OPTIONS
-          ================================================== */}
+          {/* OPTIONS */}
 
           <div className="quiz-options">
+
             {question.options.map(
               (
                 option,
                 index
               ) => {
+
                 const selected =
                   selectedAnswer ===
                   option;
@@ -1451,6 +1502,7 @@ function Quiz() {
                       selected
                     }
                   >
+
                     <span className="option-letter">
                       {letter}
                     </span>
@@ -1465,17 +1517,18 @@ function Quiz() {
                         className="option-check"
                       />
                     )}
+
                   </button>
                 );
               }
             )}
+
           </div>
 
-          {/* ==================================================
-              NAVIGATION
-          ================================================== */}
+          {/* NAVIGATION */}
 
           <div className="quiz-navigation">
+
             <button
               type="button"
               className="quiz-secondary-button"
@@ -1526,19 +1579,24 @@ function Quiz() {
                 />
               </button>
             )}
+
           </div>
+
         </section>
+
       </main>
     );
   }
 
-  // ============================================================
-  // GENERATE FORM
-  // ============================================================
+  /* ==========================================================
+     GENERATE FORM
+     ========================================================== */
 
   return (
     <main className="quiz-page">
+
       <section className="learning-header">
+
         <p className="welcome-label">
           AI ASSESSMENT
         </p>
@@ -1551,16 +1609,21 @@ function Quiz() {
           Test your knowledge with an
           AI-generated quiz.
         </p>
+
       </section>
 
       <section className="learning-plan-card">
+
         <div className="learning-plan-header">
+
           <span className="card-label">
+
             <Sparkles
               size={14}
             />
 
             &nbsp; AI QUIZ
+
           </span>
 
           <h2>
@@ -1572,6 +1635,7 @@ function Quiz() {
             experience level,
             and number of questions.
           </p>
+
         </div>
 
         <div className="learning-plan-form-content">
@@ -1579,12 +1643,15 @@ function Quiz() {
           {/* TOPIC */}
 
           <div className="learning-field">
+
             <label htmlFor="quiz-topic">
+
               <BookOpen
                 size={15}
               />
 
               Topic
+
             </label>
 
             <input
@@ -1599,17 +1666,21 @@ function Quiz() {
               placeholder="Example: Machine Learning"
               disabled={loading}
             />
+
           </div>
 
           {/* LEVEL */}
 
           <div className="learning-field">
+
             <label htmlFor="quiz-level">
+
               <Target
                 size={15}
               />
 
               Experience Level
+
             </label>
 
             <select
@@ -1622,6 +1693,7 @@ function Quiz() {
               }
               disabled={loading}
             >
+
               <option value="beginner">
                 Beginner
               </option>
@@ -1633,18 +1705,23 @@ function Quiz() {
               <option value="advanced">
                 Advanced
               </option>
+
             </select>
+
           </div>
 
           {/* QUESTION COUNT */}
 
           <div className="learning-field">
+
             <label htmlFor="quiz-count">
+
               <HelpCircle
                 size={15}
               />
 
               Questions
+
             </label>
 
             <select
@@ -1659,6 +1736,7 @@ function Quiz() {
               }
               disabled={loading}
             >
+
               <option value="5">
                 5 Questions
               </option>
@@ -1674,12 +1752,15 @@ function Quiz() {
               <option value="20">
                 20 Questions
               </option>
+
             </select>
+
           </div>
 
           {/* GENERATE BUTTON */}
 
           <div className="generate-button-wrapper">
+
             <button
               type="button"
               className="generate-button"
@@ -1688,6 +1769,7 @@ function Quiz() {
               }
               disabled={loading}
             >
+
               {loading ? (
                 <>
                   <span className="quiz-loading-spinner" />
@@ -1703,17 +1785,20 @@ function Quiz() {
                   />
                 </>
               )}
+
             </button>
+
           </div>
+
         </div>
+
       </section>
 
-      {/* ======================================================
-          ERROR
-      ====================================================== */}
+      {/* ERROR */}
 
       {error && (
         <div className="error-message">
+
           <strong>
             Quiz Error:
           </strong>
@@ -1721,8 +1806,10 @@ function Quiz() {
           <br />
 
           {error}
+
         </div>
       )}
+
     </main>
   );
 }
