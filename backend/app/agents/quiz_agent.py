@@ -14,13 +14,6 @@ from app.services.llm_service import OllamaService
 
 # =========================================================
 # QUIZ MEMORY
-#
-# Store questions in a LIST, not a SET.
-#
-# Why?
-# - List preserves insertion order.
-# - We can safely keep only the latest questions.
-# - Duplicate checking is done separately using normalization.
 # =========================================================
 
 QUIZ_MEMORY: dict[str, list[str]] = {}
@@ -30,13 +23,19 @@ QUIZ_MEMORY: dict[str, list[str]] = {}
 # CONFIGURATION
 # =========================================================
 
-MAX_BATCH_ATTEMPTS = 8
+# Maximum number of Ollama generation attempts.
+MAX_BATCH_ATTEMPTS = 3
 
-MAX_PREVIOUS_QUESTIONS = 12
+# Number of recent questions remembered.
+MAX_PREVIOUS_QUESTIONS = 6
 
-# After this many failed attempts, allow exact old questions
-# instead of failing forever.
-ALLOW_FALLBACK_AFTER_ATTEMPT = 5
+# Before this attempt, previous-question duplication is
+# strictly rejected.
+#
+# Attempt 1 -> strict
+# Attempt 2 -> strict
+# Attempt 3 -> relaxed
+ALLOW_FALLBACK_AFTER_ATTEMPT = 2
 
 
 # =========================================================
@@ -54,21 +53,15 @@ class QuizState(TypedDict):
 # =========================================================
 # TEMPORARY QUIZ BATCH
 # =========================================================
+#
+# We only ask Ollama for questions.
+# Topic and level are already known by our application.
+#
 
 class QuizBatch(BaseModel):
-    topic: str = ""
-    level: str = ""
     questions: list[QuizQuestion] = Field(
         default_factory=list
     )
-
-
-# =========================================================
-# VERIFIER RESPONSE
-# =========================================================
-
-class QuizVerification(BaseModel):
-    correct_answer: str
 
 
 # =========================================================
@@ -79,7 +72,6 @@ def get_memory_key(
     topic: str,
     level: str,
 ) -> str:
-
     return (
         f"{topic.strip().casefold()}"
         f"|"
@@ -100,24 +92,38 @@ def normalize_question_text(
 
     text = str(question).strip().casefold()
 
-    # Remove common numbering:
+    # -----------------------------------------------------
+    # Remove common numbering
+    #
+    # Examples:
     # 1. Question
+    # 2) Question
     # Q1. Question
+    # Q2) Question
     # Question 1:
+    # -----------------------------------------------------
+
     text = re.sub(
-        r"^(?:q(?:uestion)?\s*)?\d+\s*[\.\):\-]\s*",
+        r"^\s*(?:q(?:uestion)?\s*)?\d+\s*[\.\)\:\-]\s*",
         "",
         text,
+        flags=re.IGNORECASE,
     )
 
-    # Replace punctuation with spaces
+    # -----------------------------------------------------
+    # Remove punctuation
+    # -----------------------------------------------------
+
     text = re.sub(
-        r"""[?"'.,!;:\-_()\[\]{}\\/]+""",
+        r"""["'.,!?;:\-*_/\\()\[\]{}]+""",
         " ",
         text,
     )
 
+    # -----------------------------------------------------
     # Normalize whitespace
+    # -----------------------------------------------------
+
     text = re.sub(
         r"\s+",
         " ",
@@ -172,6 +178,7 @@ def validate_input(
                 0,
             )
         )
+
     except (
         TypeError,
         ValueError,
@@ -182,37 +189,33 @@ def validate_input(
         ) from error
 
     # -----------------------------------------------------
-    # Topic validation
+    # Topic
     # -----------------------------------------------------
 
     if not topic:
-
         raise ValueError(
             "Topic cannot be empty."
         )
 
     # -----------------------------------------------------
-    # Question count validation
+    # Question count
     # -----------------------------------------------------
 
     if number_of_questions < 1:
-
         raise ValueError(
             "Number of questions must be at least 1."
         )
 
     if number_of_questions > 20:
-
         raise ValueError(
             "Number of questions cannot exceed 20."
         )
 
     # -----------------------------------------------------
-    # Level validation
+    # Level
     # -----------------------------------------------------
 
     try:
-
         LearningLevel(level)
 
     except ValueError as error:
@@ -222,11 +225,8 @@ def validate_input(
         ) from error
 
     # -----------------------------------------------------
-    # Load previous memory
-    #
-    # IMPORTANT:
-    # Use only recent memory.
-    # =====================================================
+    # Load memory
+    # -----------------------------------------------------
 
     memory_key = get_memory_key(
         topic,
@@ -263,9 +263,9 @@ def build_previous_questions_prompt(
     if not previous_questions:
 
         return """
-There are no previous questions.
+No previous questions are available.
 
-Generate fresh questions from different subtopics.
+Generate fresh questions covering different concepts.
 """
 
     formatted_questions = "\n".join(
@@ -276,17 +276,13 @@ Generate fresh questions from different subtopics.
     )
 
     return f"""
-These questions were recently generated:
+Recently generated questions:
 
 {formatted_questions}
 
-Try to avoid repeating them.
+Avoid repeating these questions.
 
-IMPORTANT:
-- Prefer different concepts.
-- Prefer different subtopics.
-- Avoid exact duplicates.
-- Avoid very similar wording.
+Prefer different concepts and subtopics.
 """
 
 
@@ -322,11 +318,13 @@ def normalize_correct_answer(
 
         if (
             normalize_option_text(option)
-            ==
-            normalize_option_text(answer)
+            == normalize_option_text(answer)
         ):
-
             return option.strip()
+
+    # -----------------------------------------------------
+    # Clean answer
+    # -----------------------------------------------------
 
     answer_key = (
         answer
@@ -371,7 +369,7 @@ def normalize_correct_answer(
         ].strip()
 
     # -----------------------------------------------------
-    # A. Answer / A) Answer
+    # A. / A)
     # -----------------------------------------------------
 
     match = re.match(
@@ -394,7 +392,7 @@ def normalize_correct_answer(
         ].strip()
 
     # -----------------------------------------------------
-    # 1. Answer / 1) Answer
+    # 1. / 1)
     # -----------------------------------------------------
 
     match = re.match(
@@ -418,7 +416,7 @@ def normalize_correct_answer(
     # -----------------------------------------------------
     # Answer: A
     # Option B
-    # Answer is 3
+    # Answer is C
     # -----------------------------------------------------
 
     letter_match = re.search(
@@ -444,6 +442,11 @@ def normalize_correct_answer(
             index
         ].strip()
 
+    # -----------------------------------------------------
+    # Answer: 1
+    # Option 2
+    # -----------------------------------------------------
+
     number_match = re.search(
         r"(?:answer|option)"
         r"\s*(?:is|=|:|-)?\s*"
@@ -464,176 +467,6 @@ def normalize_correct_answer(
         return question.options[
             index
         ].strip()
-
-    return None
-
-
-# =========================================================
-# NORMALIZE VERIFIER ANSWER
-# =========================================================
-
-def normalize_verifier_answer(
-    answer: str,
-    options: list[str],
-) -> Optional[str]:
-
-    if not answer:
-        return None
-
-    if len(options) != 4:
-        return None
-
-    answer_text = str(
-        answer
-    ).strip()
-
-    if not answer_text:
-        return None
-
-    answer_key = (
-        answer_text
-        .replace("`", "")
-        .replace("*", "")
-        .strip()
-        .casefold()
-    )
-
-    # -----------------------------------------------------
-    # Direct option text
-    # -----------------------------------------------------
-
-    for option in options:
-
-        if (
-            normalize_option_text(option)
-            ==
-            normalize_option_text(answer_text)
-        ):
-
-            return option.strip()
-
-    # -----------------------------------------------------
-    # A / B / C / D
-    # -----------------------------------------------------
-
-    if answer_key in {
-        "a",
-        "b",
-        "c",
-        "d",
-    }:
-
-        index = (
-            ord(answer_key)
-            - ord("a")
-        )
-
-        return options[index].strip()
-
-    # -----------------------------------------------------
-    # 1 / 2 / 3 / 4
-    # -----------------------------------------------------
-
-    if answer_key in {
-        "1",
-        "2",
-        "3",
-        "4",
-    }:
-
-        index = (
-            int(answer_key)
-            - 1
-        )
-
-        return options[index].strip()
-
-    # -----------------------------------------------------
-    # A. / A)
-    # -----------------------------------------------------
-
-    letter_match = re.match(
-        r"^([a-d])[\.\)]",
-        answer_key,
-        re.IGNORECASE,
-    )
-
-    if letter_match:
-
-        index = (
-            ord(
-                letter_match
-                .group(1)
-                .lower()
-            )
-            - ord("a")
-        )
-
-        return options[index].strip()
-
-    # -----------------------------------------------------
-    # 1. / 1)
-    # -----------------------------------------------------
-
-    number_match = re.match(
-        r"^([1-4])[\.\)]",
-        answer_key,
-    )
-
-    if number_match:
-
-        index = (
-            int(
-                number_match.group(1)
-            )
-            - 1
-        )
-
-        return options[index].strip()
-
-    # -----------------------------------------------------
-    # Answer: A / Option B
-    # -----------------------------------------------------
-
-    letter_match = re.search(
-        r"(?:answer|option)"
-        r"\s*(?:is|=|:|-)?\s*"
-        r"([a-d])\b",
-        answer_key,
-        re.IGNORECASE,
-    )
-
-    if letter_match:
-
-        index = (
-            ord(
-                letter_match
-                .group(1)
-                .lower()
-            )
-            - ord("a")
-        )
-
-        return options[index].strip()
-
-    number_match = re.search(
-        r"(?:answer|option)"
-        r"\s*(?:is|=|:|-)?\s*"
-        r"([1-4])\b",
-        answer_key,
-        re.IGNORECASE,
-    )
-
-    if number_match:
-
-        index = (
-            int(
-                number_match.group(1)
-            )
-            - 1
-        )
-
-        return options[index].strip()
 
     return None
 
@@ -651,7 +484,6 @@ def validate_single_question(
     # -----------------------------------------------------
 
     if not question.question:
-
         return None
 
     question_text = str(
@@ -659,30 +491,29 @@ def validate_single_question(
     ).strip()
 
     if not question_text:
-
         return None
 
     question.question = question_text
 
     # -----------------------------------------------------
-    # Exactly four options
+    # Exactly 4 options
     # -----------------------------------------------------
 
     if not isinstance(
         question.options,
         list,
     ):
-
         return None
 
     if len(question.options) != 4:
 
         print(
-            "SKIPPED QUESTION - "
-            "Expected exactly 4 options:"
+            "SKIPPED - Expected exactly 4 options:"
         )
 
-        print(question.question)
+        print(
+            question.question
+        )
 
         return None
 
@@ -695,7 +526,6 @@ def validate_single_question(
     for option in question.options:
 
         if option is None:
-
             return None
 
         cleaned = str(
@@ -703,7 +533,6 @@ def validate_single_question(
         ).strip()
 
         if not cleaned:
-
             return None
 
         cleaned_options.append(
@@ -719,24 +548,24 @@ def validate_single_question(
         for option in cleaned_options
     ]
 
-    if (
-        len(set(normalized_options))
-        != 4
-    ):
+    if len(
+        set(normalized_options)
+    ) != 4:
 
         print(
-            "SKIPPED QUESTION - "
-            "Duplicate options:"
+            "SKIPPED - Duplicate options:"
         )
 
-        print(question.question)
+        print(
+            question.question
+        )
 
         return None
 
     question.options = cleaned_options
 
     # -----------------------------------------------------
-    # Normalize correct answer
+    # Correct answer
     # -----------------------------------------------------
 
     correct_option = (
@@ -748,14 +577,15 @@ def validate_single_question(
     if correct_option is None:
 
         print(
-            "SKIPPED QUESTION - "
-            "Invalid correct answer:"
+            "SKIPPED - Invalid correct answer:"
         )
 
-        print(question.question)
+        print(
+            question.question
+        )
 
         print(
-            "LLM correct answer:",
+            "LLM answer:",
             question.correct_answer,
         )
 
@@ -770,16 +600,15 @@ def validate_single_question(
     # -----------------------------------------------------
 
     explanation = str(
-        question.explanation
-        or ""
+        question.explanation or ""
     ).strip()
 
     if not explanation:
 
         explanation = (
             "This option is correct "
-            "based on the concept "
-            "tested in the question."
+            "based on the concept tested "
+            "in the question."
         )
 
     question.explanation = explanation
@@ -800,20 +629,13 @@ def build_quiz_prompt(
     attempt: int,
 ) -> str:
 
-    # =====================================================
-    # IMPORTANT FALLBACK
-    #
-    # For first few attempts, avoid previous questions.
-    #
-    # After several failures, stop sending the huge
-    # "do not repeat" restriction. This prevents the model
-    # from getting stuck generating nothing useful.
-    # =====================================================
+    # -----------------------------------------------------
+    # Previous questions
+    # -----------------------------------------------------
 
     if (
         attempt
-        <
-        ALLOW_FALLBACK_AFTER_ATTEMPT
+        < ALLOW_FALLBACK_AFTER_ATTEMPT
     ):
 
         previous_section = (
@@ -825,17 +647,15 @@ def build_quiz_prompt(
     else:
 
         previous_section = """
-You have already generated quizzes before.
+Prefer fresh questions.
 
-Prefer fresh concepts, but prioritize generating
-valid, high-quality questions.
-
-Do not get stuck trying to avoid every old question.
+Do not waste time trying to avoid
+every previous question.
 """
 
-    # =====================================================
+    # -----------------------------------------------------
     # Current questions
-    # =====================================================
+    # -----------------------------------------------------
 
     if current_questions:
 
@@ -847,25 +667,27 @@ Do not get stuck trying to avoid every old question.
         )
 
         current_section = f"""
-Questions already collected in the CURRENT quiz:
+Already collected questions:
 
 {current_list}
 
-Do not repeat these exact questions.
+Do not repeat these questions.
 """
 
     else:
 
         current_section = """
-No questions have been collected yet
-for the current quiz.
+No questions collected yet.
 """
 
-    return f"""
-You are an expert quiz generator.
+    # -----------------------------------------------------
+    # Prompt
+    # -----------------------------------------------------
 
-Generate EXACTLY {number_of_questions}
-multiple-choice questions.
+    return f"""
+You are an expert multiple-choice quiz generator.
+
+Generate EXACTLY {number_of_questions} questions.
 
 TOPIC:
 {topic}
@@ -873,20 +695,18 @@ TOPIC:
 LEVEL:
 {level}
 
-GENERATION ATTEMPT:
+ATTEMPT:
 {attempt}
 
-RECENT PREVIOUS QUESTIONS:
 {previous_section}
 
-CURRENT QUIZ QUESTIONS:
 {current_section}
 
 STRICT REQUIREMENTS:
 
 1. Every question must be about {topic}.
 
-2. Difficulty must match {level}.
+2. Match the difficulty to {level}.
 
 3. Generate exactly {number_of_questions} questions.
 
@@ -894,169 +714,31 @@ STRICT REQUIREMENTS:
 
 5. All 4 options must be unique.
 
-6. Each question must have one correct answer.
+6. Each question must have exactly one correct answer.
 
-7. correct_answer MUST be one of:
+7. correct_answer must be either:
    - exact option text
    - A
    - B
    - C
    - D
 
-8. Include a short explanation.
+8. Include a SHORT explanation.
 
-9. Questions should cover different concepts.
+9. Cover different concepts and subtopics.
 
-10. Avoid exact duplicate questions inside
-    the current quiz.
+10. Avoid duplicate questions.
 
-11. Do not generate introductory text.
+11. No introductory text.
 
-12. Return only the structured data required
-    by the schema.
+12. Return ONLY structured data.
+
+13. Do NOT return markdown.
+
+14. Do NOT return JSON inside a string.
 
 Generate the quiz now.
 """
-
-
-# =========================================================
-# BUILD VERIFIER PROMPT
-# =========================================================
-
-def build_verifier_prompt(
-    question: QuizQuestion,
-) -> str:
-
-    options_text = "\n".join(
-        [
-            f"A. {question.options[0]}",
-            f"B. {question.options[1]}",
-            f"C. {question.options[2]}",
-            f"D. {question.options[3]}",
-        ]
-    )
-
-    return f"""
-You are a multiple-choice answer verifier.
-
-QUESTION:
-
-{question.question}
-
-OPTIONS:
-
-{options_text}
-
-Determine the single correct option.
-
-Return ONLY one letter:
-
-A
-B
-C
-or
-D
-"""
-
-
-# =========================================================
-# SEMANTIC VERIFY QUESTION
-# =========================================================
-
-def semantic_verify_question(
-    question: QuizQuestion,
-    llm,
-) -> Optional[QuizQuestion]:
-
-    if len(question.options) != 4:
-
-        return None
-
-    verifier_prompt = (
-        build_verifier_prompt(
-            question
-        )
-    )
-
-    try:
-
-        structured_verifier = (
-            llm.with_structured_output(
-                QuizVerification
-            )
-        )
-
-        verification = (
-            structured_verifier.invoke(
-                verifier_prompt
-            )
-        )
-
-    except Exception as error:
-
-        # IMPORTANT:
-        # Do not reject a perfectly valid generated question
-        # only because the verifier failed.
-        #
-        # Fall back to the already normalized answer.
-        print(
-            "VERIFIER ERROR - "
-            "Using original answer:"
-        )
-
-        print(error)
-
-        return question
-
-    if verification is None:
-
-        print(
-            "VERIFIER RETURNED NOTHING - "
-            "Using original answer."
-        )
-
-        return question
-
-    verifier_answer = (
-        verification.correct_answer
-    )
-
-    normalized_answer = (
-        normalize_verifier_answer(
-            verifier_answer,
-            question.options,
-        )
-    )
-
-    if normalized_answer is None:
-
-        print(
-            "VERIFIER INVALID ANSWER - "
-            "Using original answer."
-        )
-
-        print(
-            "Verifier answer:",
-            verifier_answer,
-        )
-
-        return question
-
-    print(
-        "Verifier answer:",
-        verifier_answer,
-    )
-
-    print(
-        "Normalized verifier answer:",
-        normalized_answer,
-    )
-
-    question.correct_answer = (
-        normalized_answer
-    )
-
-    return question
 
 
 # =========================================================
@@ -1075,15 +757,13 @@ def generate_quiz(
         state["number_of_questions"]
     )
 
-    previous_questions = (
-        state.get(
-            "previous_questions",
-            [],
-        )
+    previous_questions = state.get(
+        "previous_questions",
+        [],
     )
 
     # =====================================================
-    # NORMALIZED PREVIOUS QUESTIONS
+    # PREVIOUS NORMALIZED QUESTIONS
     # =====================================================
 
     previous_normalized = {
@@ -1116,6 +796,16 @@ def generate_quiz(
     )
 
     # =====================================================
+    # STRUCTURED OUTPUT
+    # =====================================================
+
+    structured_llm = (
+        llm.with_structured_output(
+            QuizBatch
+        )
+    )
+
+    # =====================================================
     # GENERATION LOOP
     # =====================================================
 
@@ -1126,55 +816,38 @@ def generate_quiz(
 
         remaining = (
             required_count
-            -
-            len(collected_questions)
+            - len(collected_questions)
         )
 
         if remaining <= 0:
-
             break
 
         # -------------------------------------------------
-        # Ask for extra questions
-        #
-        # If we need 5, request 8.
-        # This gives room for duplicates/invalid questions.
+        # Request only what is needed
         # -------------------------------------------------
 
-        batch_size = min(
-            max(
-                remaining + 3,
-                5,
-            ),
-            10,
-        )
+        batch_size = remaining
 
         print()
+        print("=" * 60)
 
         print(
-            "=" * 60
+            f"Quiz generation "
+            f"{attempt}/{MAX_BATCH_ATTEMPTS}"
         )
 
         print(
-            f"Generating quiz batch... "
-            f"Attempt {attempt}/"
-            f"{MAX_BATCH_ATTEMPTS}"
+            f"Need: {remaining}"
         )
 
         print(
-            f"Need {remaining} more questions."
+            f"Requesting: {batch_size}"
         )
 
-        print(
-            f"Requesting {batch_size}."
-        )
-
-        print(
-            "=" * 60
-        )
+        print("=" * 60)
 
         # -------------------------------------------------
-        # Build prompt
+        # Prompt
         # -------------------------------------------------
 
         prompt = build_quiz_prompt(
@@ -1187,17 +860,7 @@ def generate_quiz(
         )
 
         # -------------------------------------------------
-        # Structured output
-        # -------------------------------------------------
-
-        structured_llm = (
-            llm.with_structured_output(
-                QuizBatch
-            )
-        )
-
-        # -------------------------------------------------
-        # Call LLM
+        # LLM CALL
         # -------------------------------------------------
 
         try:
@@ -1225,8 +888,7 @@ def generate_quiz(
 
         if (
             batch_response is None
-            or
-            not batch_response.questions
+            or not batch_response.questions
         ):
 
             print(
@@ -1250,7 +912,7 @@ def generate_quiz(
         ):
 
             # -------------------------------------------------
-            # Basic validation
+            # Validate
             # -------------------------------------------------
 
             valid_question = (
@@ -1260,8 +922,11 @@ def generate_quiz(
             )
 
             if valid_question is None:
-
                 continue
+
+            # -------------------------------------------------
+            # Normalize question
+            # -------------------------------------------------
 
             normalized = (
                 normalize_question_text(
@@ -1270,13 +935,10 @@ def generate_quiz(
             )
 
             if not normalized:
-
                 continue
 
             # -------------------------------------------------
-            # CURRENT QUIZ DUPLICATE
-            #
-            # Always reject duplicates inside the same quiz.
+            # Current quiz duplicate
             # -------------------------------------------------
 
             if (
@@ -1285,7 +947,7 @@ def generate_quiz(
             ):
 
                 print(
-                    "REMOVED CURRENT QUIZ DUPLICATE:"
+                    "REMOVED CURRENT DUPLICATE:"
                 )
 
                 print(
@@ -1295,12 +957,7 @@ def generate_quiz(
                 continue
 
             # -------------------------------------------------
-            # PREVIOUS QUIZ DUPLICATE
-            #
-            # Reject only during early attempts.
-            #
-            # After repeated failures, allow the question
-            # so the API does not fail forever.
+            # Previous quiz duplicate
             # -------------------------------------------------
 
             if (
@@ -1308,12 +965,11 @@ def generate_quiz(
                 in previous_normalized
                 and
                 attempt
-                <
-                ALLOW_FALLBACK_AFTER_ATTEMPT
+                < ALLOW_FALLBACK_AFTER_ATTEMPT
             ):
 
                 print(
-                    "REMOVED PREVIOUS QUIZ DUPLICATE:"
+                    "REMOVED PREVIOUS DUPLICATE:"
                 )
 
                 print(
@@ -1323,72 +979,10 @@ def generate_quiz(
                 continue
 
             # -------------------------------------------------
-            # Semantic verification
+            # Assign temporary ID
             # -------------------------------------------------
 
-            verified_question = (
-                semantic_verify_question(
-                    valid_question,
-                    llm,
-                )
-            )
-
-            if verified_question is None:
-
-                print(
-                    "SKIPPED QUESTION "
-                    "AFTER VERIFICATION:"
-                )
-
-                print(
-                    valid_question.question
-                )
-
-                continue
-
-            # -------------------------------------------------
-            # Final answer normalization
-            # -------------------------------------------------
-
-            final_answer = (
-                normalize_verifier_answer(
-                    verified_question.correct_answer,
-                    verified_question.options,
-                )
-            )
-
-            # If verifier output is weird,
-            # normalize using original answer logic.
-            if final_answer is None:
-
-                final_answer = (
-                    normalize_correct_answer(
-                        verified_question
-                    )
-                )
-
-            if final_answer is None:
-
-                print(
-                    "SKIPPED QUESTION - "
-                    "Unable to normalize answer."
-                )
-
-                print(
-                    verified_question.question
-                )
-
-                continue
-
-            verified_question.correct_answer = (
-                final_answer
-            )
-
-            # -------------------------------------------------
-            # Temporary ID
-            # -------------------------------------------------
-
-            verified_question.id = (
+            valid_question.id = (
                 len(collected_questions)
                 + 1
             )
@@ -1398,7 +992,7 @@ def generate_quiz(
             # -------------------------------------------------
 
             collected_questions.append(
-                verified_question
+                valid_question
             )
 
             collected_normalized.add(
@@ -1410,12 +1004,12 @@ def generate_quiz(
             )
 
             print(
-                verified_question.question
+                valid_question.question
             )
 
             print(
                 "Correct answer:",
-                verified_question.correct_answer,
+                valid_question.correct_answer,
             )
 
             print(
@@ -1424,15 +1018,18 @@ def generate_quiz(
                 f"{required_count}"
             )
 
+            # -------------------------------------------------
+            # Stop if enough
+            # -------------------------------------------------
+
             if (
                 len(collected_questions)
                 >= required_count
             ):
-
                 break
 
         # =====================================================
-        # RESULT
+        # BATCH RESULT
         # =====================================================
 
         print()
@@ -1440,15 +1037,13 @@ def generate_quiz(
         print(
             f"Collected "
             f"{len(collected_questions)}/"
-            f"{required_count} "
-            f"valid questions."
+            f"{required_count}"
         )
 
         if (
             len(collected_questions)
             >= required_count
         ):
-
             break
 
     # =====================================================
@@ -1527,10 +1122,13 @@ def validate_output(
         state["number_of_questions"]
     )
 
+    # -----------------------------------------------------
+    # Count
+    # -----------------------------------------------------
+
     if (
         len(response.questions)
-        !=
-        expected_count
+        != expected_count
     ):
 
         raise ValueError(
@@ -1545,6 +1143,10 @@ def validate_output(
     ] = []
 
     seen_questions: set[str] = set()
+
+    # -----------------------------------------------------
+    # Validate every question
+    # -----------------------------------------------------
 
     for index, question in enumerate(
         response.questions,
@@ -1570,14 +1172,14 @@ def validate_output(
             )
         )
 
-        if (
-            normalized
-            in seen_questions
-        ):
+        # -------------------------------------------------
+        # Duplicate
+        # -------------------------------------------------
+
+        if normalized in seen_questions:
 
             raise ValueError(
-                "Duplicate question detected "
-                f"at final validation: "
+                "Duplicate question detected: "
                 f"{valid_question.question}"
             )
 
@@ -1590,6 +1192,10 @@ def validate_output(
         final_questions.append(
             valid_question
         )
+
+    # -----------------------------------------------------
+    # Final response
+    # -----------------------------------------------------
 
     validated_response = QuizResponse(
         topic=response.topic,
@@ -1616,7 +1222,6 @@ def save_quiz_to_memory(
     )
 
     if response is None:
-
         return state
 
     memory_key = get_memory_key(
@@ -1625,7 +1230,7 @@ def save_quiz_to_memory(
     )
 
     # -----------------------------------------------------
-    # Initialize memory
+    # Initialize
     # -----------------------------------------------------
 
     if memory_key not in QUIZ_MEMORY:
@@ -1638,15 +1243,22 @@ def save_quiz_to_memory(
         memory_key
     ]
 
+    # -----------------------------------------------------
+    # Existing normalized questions
+    # -----------------------------------------------------
+
     existing_normalized = {
         normalize_question_text(
             question
         )
         for question in memory
+        if normalize_question_text(
+            question
+        )
     }
 
     # -----------------------------------------------------
-    # Add only new questions
+    # Add new questions
     # -----------------------------------------------------
 
     for question in response.questions:
@@ -1673,7 +1285,7 @@ def save_quiz_to_memory(
             )
 
     # -----------------------------------------------------
-    # Keep only latest questions
+    # Keep recent questions only
     # -----------------------------------------------------
 
     QUIZ_MEMORY[
@@ -1744,7 +1356,7 @@ def build_quiz_graph():
     )
 
     # -----------------------------------------------------
-    # VALIDATE -> GENERATE
+    # Validate -> Generate
     # -----------------------------------------------------
 
     graph.add_edge(
@@ -1753,7 +1365,7 @@ def build_quiz_graph():
     )
 
     # -----------------------------------------------------
-    # GENERATE -> VALIDATE
+    # Generate -> Validate
     # -----------------------------------------------------
 
     graph.add_edge(
@@ -1762,7 +1374,7 @@ def build_quiz_graph():
     )
 
     # -----------------------------------------------------
-    # VALIDATE -> MEMORY
+    # Validate -> Memory
     # -----------------------------------------------------
 
     graph.add_edge(
@@ -1771,12 +1383,16 @@ def build_quiz_graph():
     )
 
     # -----------------------------------------------------
-    # MEMORY -> END
+    # Memory -> END
     # -----------------------------------------------------
 
     graph.add_edge(
         "save_quiz_to_memory",
         END,
     )
+
+    # -----------------------------------------------------
+    # Compile
+    # -----------------------------------------------------
 
     return graph.compile()
