@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+
 import {
   Bot,
   Send,
@@ -15,7 +16,7 @@ import {
 
 const API_BASE_URL = (
   import.meta.env.VITE_API_URL ||
-  "http://127.0.0.1:8000"
+  "https://gather-restaurant-advertisements-brooks.trycloudflare.com"
 ).replace(/\/+$/, "");
 
 const API_URL = `${API_BASE_URL}/api/v1/tutor`;
@@ -201,9 +202,7 @@ function AITutor() {
       return data.message.trim();
     }
 
-    return sections.join(
-      "\n\n"
-    );
+    return sections.join("\n\n");
   };
 
   // ===================================================
@@ -276,8 +275,7 @@ function AITutor() {
         ...previousMessages,
         {
           role: "user",
-          content:
-            userMessage,
+          content: userMessage,
         },
       ]
     );
@@ -466,6 +464,7 @@ function AITutor() {
           },
         ]
       );
+
     } catch (error) {
       // ===============================================
       // ERROR LOG
@@ -503,6 +502,7 @@ function AITutor() {
           },
         ]
       );
+
     } finally {
       setLoading(false);
     }
@@ -520,7 +520,6 @@ function AITutor() {
       !event.shiftKey
     ) {
       event.preventDefault();
-
       sendMessage();
     }
   };
@@ -614,7 +613,6 @@ function AITutor() {
               disabled={loading}
             >
               <Trash2 size={15} />
-
               Clear
             </button>
 
@@ -751,7 +749,6 @@ function AITutor() {
                 </div>
 
               </div>
-
             )
           )}
 
