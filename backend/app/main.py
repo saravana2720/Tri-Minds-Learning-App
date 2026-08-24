@@ -1,6 +1,5 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import os
 
 from app.routes.tutor import router as tutor_router
 from app.routes.learning_plan import router as learning_plan_router
@@ -22,29 +21,12 @@ app = FastAPI(
 # CORS CONFIGURATION
 # ============================================================
 
-# Default frontend origins
-ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "https://tri-minds-learning-app-o89m.vercel.app",
-]
-
-
-# Optional: allow additional frontend origin from environment
-# Example:
-# FRONTEND_URL=https://your-vercel-app.vercel.app
-frontend_url = os.getenv("FRONTEND_URL")
-
-if frontend_url:
-    frontend_url = frontend_url.rstrip("/")
-
-    if frontend_url not in ALLOWED_ORIGINS:
-        ALLOWED_ORIGINS.append(frontend_url)
-
-
+# Allow requests from all origins.
+# This is suitable for the current deployment/testing setup.
+# We are not using credentials/cookies.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
